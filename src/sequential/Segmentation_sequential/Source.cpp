@@ -71,7 +71,7 @@ imageData inputImage(int* w, int* h, System::String^ imagePath) //put the size o
 }
 
 
-void createImage(imageData imgData, int width, int height, int cluster_num, int index)
+void createImage(imageData imgData, int width, int height, int cluster_num)
 {
 
 	//Declaring the variables
@@ -96,9 +96,11 @@ void createImage(imageData imgData, int width, int height, int cluster_num, int 
 		centers[i * channels] = imgData.red[point];
 		centers[i * channels + 1] = imgData.green[point];
 		centers[i * channels + 2] = imgData.blue[point];
-		means[i * channels] = 0;
-		means[i * channels + 1] = 0;
-		means[i * channels + 2] = 0;
+
+		for (int c = 0; c < channels; c++) {
+			means[i * channels + c] = 0;
+		}
+		
 		cluster_size[i] = 0;
 	}
 
@@ -135,23 +137,28 @@ void createImage(imageData imgData, int width, int height, int cluster_num, int 
 		int diff = 0;
 		for (int i = 0; i < cluster_num; i++)
 		{	
-			//Calculate the difference between the new and the old cluster centers
-			diff += abs(centers[i * channels] - means[i * channels] / cluster_size[i]);
-			diff += abs(centers[i * channels + 1] - means[i * channels + 1] / cluster_size[i]);
-			diff += abs(centers[i * channels + 2] - means[i * channels + 2] / cluster_size[i]);
 
-			//Update the old center of each cluster by calculating the mean of its elements
-			centers[i * channels] = means[i * channels] / cluster_size[i];
-			centers[i * channels + 1] = means[i * channels + 1] / cluster_size[i];
-			centers[i * channels + 2] = means[i * channels + 2] / cluster_size[i];
+			for (int c = 0; c < channels; c++) {
+				
+				if (cluster_size[i] == 0) { //In case a cluster has no points
+					continue;
+				}
+
+				//Calculate the difference between the new and the old cluster centers
+				diff += abs(centers[i * channels + c] - means[i * channels + c] / cluster_size[i]);
+				
+				//Update the old center of each cluster by calculating the mean of its elements
+				centers[i * channels + c] = means[i * channels + c] / cluster_size[i];
+			}
 		}
 
 		//Reset the means and cluster sizes arrays for the new iteration
 		for (int i = 0; i < cluster_num; i++)
 		{
-			means[i * channels] = 0;
-			means[i * channels + 1] = 0;
-			means[i * channels + 2] = 0;
+
+			for (int c = 0; c < channels; c++) {
+				means[i * channels + c] = 0;
+			}
 			cluster_size[i] = 0;
 		}
 
@@ -165,7 +172,7 @@ void createImage(imageData imgData, int width, int height, int cluster_num, int 
 		}
 	
 
-	System::Drawing::Bitmap MyNewImage(width, height);
+	System::Drawing::Bitmap rgbImage(width, height);
 
 	//Reconstruct the new image 
 	//by replacing each pixel's RGP values with those of its cluster centroid
@@ -174,20 +181,21 @@ void createImage(imageData imgData, int width, int height, int cluster_num, int 
 			centers[clusters[i] * channels], \
 			centers[clusters[i] * channels + 1], \
 			centers[clusters[i] * channels + 2]);
+
 		int row = i / width;
 		int col = i % width;
-		MyNewImage.SetPixel(col, row, c);
+		rgbImage.SetPixel(col, row, c);
 	}
 
 	//Save the reconstructed image
-	MyNewImage.Save("E://GitHub//Parallel_Image_Segmentation//Data//Output//outputRes" + index + ".png");
-	cout << "result Image Saved " << index << endl;
+	rgbImage.Save("..//..//..//Data//Output//outputRes" + "rgb" + ".png");	
+	cout << "RGB Image Saved " << endl;
 
 	//Calculate the elapsed time
 	stop_s = clock();
 	TotalTime += (stop_s - start_s) / double(CLOCKS_PER_SEC) * 1000;
 
-	cout << "time: " << TotalTime << endl;
+	cout << "RGB time: " << TotalTime << endl;
 
 	delete[] means;
 	delete[] clusters;
@@ -195,6 +203,119 @@ void createImage(imageData imgData, int width, int height, int cluster_num, int 
 	delete[] cluster_size;
 }
 
+void createImageGrayscale(imageData imgData, int width, int height, int cluster_num)
+{
+
+	//Declaring the variables
+	int start_s, stop_s, TotalTime = 0;
+	start_s = clock();
+
+	int dims = width * height;
+	int thresh = cluster_num;
+	int* centers = new int[cluster_num];
+	int* means = new int[cluster_num];
+	int* cluster_size = new int[cluster_num];
+	int* clusters = new int[dims];
+	int flag = 1;
+
+	//Initialize the centers
+	int point;
+	srand(time(NULL));
+	for (int i = 0; i < cluster_num; i++)
+	{
+		point = rand() % (dims);
+		centers[i] = imgData.gray[point];
+		means[i] = 0;
+		cluster_size[i] = 0;
+	}
+
+	//Iterate until convergence
+	while (flag) {
+
+		for (int i = 0; i < dims; i++) {
+			int min = INT_MAX;
+			int min_index = 0;
+			int dist = 0;
+			for (int j = 0; j < cluster_num; j++) {
+				//Calculate distance between pixels and cluster centroids
+				dist += abs(imgData.gray[i] - centers[j]);
+				if (dist < min) {
+					min = dist;
+					min_index = j;
+				}
+				dist = 0;
+			}
+
+			clusters[i] = min_index;	//Add pixel to the nearest cluster
+			cluster_size[min_index]++;	//Increment size of cluster
+
+			//Add pixel values of the same cluster together to calculate the means later
+			means[min_index] += imgData.gray[i];
+
+		}
+
+
+		int diff = 0;
+		for (int i = 0; i < cluster_num; i++)
+		{		
+			if (cluster_size[i] == 0) { //In case a cluster has no points
+				continue;
+			}
+
+			//Calculate the difference between the new and the old cluster centers
+			diff += abs(centers[i] - means[i] / cluster_size[i]);
+
+			//Update the old center of each cluster by calculating the mean of its elements
+			centers[i] = means[i] / cluster_size[i];
+		}
+
+		//Reset the means and cluster sizes arrays for the new iteration
+		for (int i = 0; i < cluster_num; i++)
+		{
+			means[i] = 0;
+			cluster_size[i] = 0;
+		}
+
+		//If the difference between the old and new cluster centers 
+		//is less than the threshold then we have reached convergence
+		if (diff < thresh)
+			flag = 0;
+		else
+			flag = 1;
+
+	}
+
+
+	System::Drawing::Bitmap rgbImage(width, height);
+
+	//Reconstruct the new image 
+	//by replacing each pixel's RGP values with those of its cluster centroid
+	for (int i = 0; i < dims; i++) {
+		System::Drawing::Color c = System::Drawing::Color::FromArgb(\
+			centers[clusters[i]], \
+			centers[clusters[i]], \
+			centers[clusters[i]]);
+
+		int row = i / width;
+		int col = i % width;
+		rgbImage.SetPixel(col, row, c);
+	}
+
+	//Save the reconstructed image
+	rgbImage.Save("..//..//..//Data//Output//outputRes" + "grayscale" + ".png");
+	cout << "Grayscale Image Saved " << endl;
+
+	//Calculate the elapsed time
+	stop_s = clock();
+	TotalTime += (stop_s - start_s) / double(CLOCKS_PER_SEC) * 1000;
+
+	cout << "Grayscale time: " << TotalTime << endl;
+
+	delete[] means;
+	delete[] clusters;
+	delete[] centers;
+	delete[] cluster_size;
+}
 
 int main(int argc, char** argv)
 {
@@ -202,9 +323,9 @@ int main(int argc, char** argv)
 	int ImageWidth = 4, ImageHeight = 4;
 	int cluster_num = 3;
 	System::String^ imagePath;
-	std::string img;
+	std::string path;
 	//Grayscale_Segmentation.jpg
-	img = "E://GitHub//Parallel_Image_Segmentation//Data//Input//Grayscale_Segmentation.jpg";
+	string img = "Grayscale_Segmentation.jpg";
 
 	if (argc >= 3) {
 		img = argv[1];
@@ -213,12 +334,13 @@ int main(int argc, char** argv)
 	else if (argc == 2) {
 		img = argv[1];
 	}
-	
-	imagePath = marshal_as<System::String^>(img);
+
+	path = "..//..//..//Data//Input//" + img;
+	imagePath = marshal_as<System::String^>(path);
 	imageData imgData = inputImage(&ImageWidth, &ImageHeight, imagePath);
 
-	createImage(imgData, ImageWidth, ImageHeight, cluster_num, 1);
-
+	createImage(imgData, ImageWidth, ImageHeight, cluster_num);
+	createImageGrayscale(imgData, ImageWidth, ImageHeight, cluster_num);
 
 	delete[] imgData.red;
 	delete[] imgData.green;
